@@ -26,11 +26,10 @@ jobs:
 
       # 2. Install Java 17
       - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
+  uses: actions/setup-java@v5
+  with:
+    distribution: temurin
+    java-version: '17'
 
       # 3. Setup Android SDK
       - name: Setup Android SDK
