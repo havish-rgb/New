@@ -1,124 +1,72 @@
 
-name: JARVIS Android APK
+name: Build JARVIS Debug APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: jarvis-android-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
-    name: Build JARVIS Debug APK
+    name: Build JARVIS APK
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
 
     steps:
+      # 1. Download project
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      # 2. Install Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
+      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Locate or Extract Android Project
-        id: project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SETTINGS=$(find . -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -not -path './.git/*' \
-            -not -path './.gradle/*' \
-            -print -quit)
-
-          if [[ -z "$SETTINGS" ]]; then
-            ZIP=""
-
-            for candidate in \
-              "JARVIS-source-fixed.zip" \
-              "Jarvis final.zip" \
-              "Jarvis-fixed.zip" \
-              "JARVIS-FULL-SOURCE.zip"; do
-
-              if [[ -f "$candidate" ]]; then
-                ZIP="$candidate"
-                break
-              fi
-            done
-
-            if [[ -z "$ZIP" ]]; then
-              echo "ERROR: No JARVIS ZIP found!"
-              find . -maxdepth 4 -type f
-              exit 1
-            fi
-
-            mkdir -p "$RUNNER_TEMP/jarvis-project"
-            unzip -q "$ZIP" -d "$RUNNER_TEMP/jarvis-project"
-
-            SETTINGS=$(find "$RUNNER_TEMP/jarvis-project" \
-              -type f \
-              \( -name settings.gradle -o -name settings.gradle.kts \) \
-              -print -quit)
-          fi
-
-          if [[ -z "$SETTINGS" ]]; then
-            echo "ERROR: Gradle settings file not found!"
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          if [[ ! -f "$PROJECT_DIR/app/build.gradle" && \
-                ! -f "$PROJECT_DIR/app/build.gradle.kts" ]]; then
-            echo "ERROR: Android app Gradle file missing!"
-            exit 1
-          fi
-
-          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          echo "Project found: $PROJECT_DIR"
-
-      - name: Install Android SDK Components
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          packages: platform-tools
 
-      - name: Build Debug APK
-        shell: bash
+      # 4. Check Android SDK
+      - name: Verify Android SDK
         run: |
-          set -euo pipefail
-          cd "${{ steps.project.outputs.dir }}"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          sdkmanager --version
 
-          if [[ -f ./gradlew ]]; then
-            chmod +x ./gradlew
-            ./gradlew --no-daemon clean assembleDebug
-          else
-            gradle --no-daemon clean assembleDebug
+      # 5. Prepare Gradle
+      - name: Prepare Gradle
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            echo "ERROR: gradlew not found in repository root!"
+            exit 1
           fi
+          chmod +x ./gradlew
+          java -version
 
+      # 6. Build Debug APK
+      - name: Build JARVIS Debug APK
+        run: |
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      # 7. Upload APK
       - name: Upload JARVIS APK
         uses: actions/upload-artifact@v4
         with:
-          name: JARVIS-Android-APK
-          path: ${{ steps.project.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          name: JARVIS-Debug-APK
+          path: |
+            **/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+
